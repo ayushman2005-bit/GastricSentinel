@@ -36,7 +36,7 @@ tabular data, and fused embeddings.
 <h1>DATASETS</h1>
 -✅ Cancer Cells <a href="https://www.kaggle.com/datasets/orvile/gastric-cancer-histopathology-tissue-image-dataset"> " LINK " </a>
 <br>
--✅ Genomical Dastaset(download) <a href="https://gdc-hub.s3.us-east-1> " LINK " </a>
+-✅ Genomical Dastaset(download) <a href="https://xenabrowser.net/datapages/?dataset=TCGA-STAD.star_fpkm.tsv&host=https%3A%2F%2Fgdc.xenahubs.net&removeHub=https%3A%2F%2Fxena.treehouse.gi.ucsc.edu%3A443"> " LINK " </a>
 <br>
 -✅ Clinical Dataset <a href="https://portal.gdc.cancer.gov/projects/TCGA-STAD"> " LINK " </a>
 
