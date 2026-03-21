@@ -2524,9 +2524,9 @@ function reportCustomHTML() {
 }
 
 
-// ══════════════════════════════════════════════
+// ═══════════
 // RISK ALERTS PANEL
-// ══════════════════════════════════════════════
+// ═══════════
 const RISK_ALERTS = [
   { id:1, patient:'Kiran Desai',   pid:'P-0037', age:67, dx:'Adenocarcinoma',       score:94, status:'critical', action:'Immediate oncology referral', since:'2h ago' },
   { id:2, patient:'Arjun Mehta',   pid:'P-0041', age:58, dx:'High-Grade Dysplasia', score:82, status:'urgent',   action:'Endoscopic resection consult', since:'4h ago' },
@@ -2607,9 +2607,9 @@ window.dismissAlert = function(id, btn) {
 };
 
 
-// ══════════════════════════════════════════════
+// ═════════
 // SETTINGS PANEL
-// ══════════════════════════════════════════════
+// ═════════
 function openSettings() {
   const existing = document.getElementById('settingsModal');
   if (existing) { existing.classList.add('open'); return; }
@@ -2800,9 +2800,9 @@ function applySavedSettings() {
 }
 
 
-// ══════════════════════════════════════════════
+// ══════════
 // PROFILE DROPDOWN (Google-style)
-// ══════════════════════════════════════════════
+// ══════════
 function initProfileDropdown() {
   const avatarBtn = document.querySelector('.avatar-btn');
   if (!avatarBtn) return;
@@ -3148,11 +3148,11 @@ document.addEventListener('DOMContentLoaded', () => {
     bd.addEventListener('click', e => { if (e.target === bd) bd.classList.remove('open'); });
   });
 });
-// ═══════════════════════════════════════════════════════════════
+// ═══════════
 // NEW FEATURES — PDF Modal, Batch Upload, Confidence Trend, Chatbot Fix
-// ═══════════════════════════════════════════════════════════════
+// ══════════=
 
-// ── 1. PDF Report Modal ──────────────────────────────────────────
+// ── 1. PDF Report Modal ─
 function openReportModal() {
   const existing = document.getElementById('reportModal');
   if (existing) { existing.classList.add('open'); return; }
@@ -3517,7 +3517,7 @@ function _resetBatchModal() {
 }
 
 
-// ── 3. Confidence Trend Chart ────────────────────────────────────
+// ── 3. Confidence Trend Chart ───────────
 let _trendData = JSON.parse(localStorage.getItem('gs_trend_data') || '[]');
 
 function recordTrendPoint(tier, confidence, predictedClass) {
@@ -3614,7 +3614,7 @@ function clearTrendData() {
 }
 
 
-// ── 4. Improved Chatbot ──────────────────────────────────────────
+// ── 4. Improved Chatbot ───────
 async function sendChatMessageV2() {
   const input = document.getElementById('chatInput');
   const body  = document.getElementById('chatBody');
@@ -3703,7 +3703,7 @@ window.sendChatMessage = sendChatMessageV2;
 
 // ── 5. Wire everything into displayResults (handled in section below) ──
 
-// ── 6. Init on DOM ready ────────────────────────────────────────
+// ── 6. Init on DOM ready ─────────────
 document.addEventListener('DOMContentLoaded', () => {
   // Wire new report button
   document.getElementById('downloadReport')?.addEventListener('click', e => {
@@ -3725,9 +3725,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('batchUploadBtn')?.addEventListener('click', openBatchModal);
 });
 
-// ════════════════════════════════════════════════════════════════
+
 // DASHBOARD INTRO ANIMATION
-// ════════════════════════════════════════════════════════════════
+
 function runDashboardIntro() {
   if (!document.getElementById('patientsCount')) return;
   if (sessionStorage.getItem('gs_intro_done')) return;
