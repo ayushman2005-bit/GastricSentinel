@@ -166,7 +166,7 @@ GastricSentinel draws on three categories of data: histopathological images, gen
 |-----------------|---------------------------------------|
 | Frontend        | HTML · CSS · JavaScript               |
 | Backend         | Python · Flask (or FastAPI)           |
-| Database        | MongoDB Atlas                         |
+| Database        | Supabase(PostgresSQL)                 |
 | ML/AI           | TensorFlow / PyTorch · Fusion Layer   |
 | Explainability  | Grad-CAM · SHAP                       |
 | Chatbot         | Conversational AI Assistant           |
