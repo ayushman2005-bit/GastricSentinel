@@ -2,8 +2,8 @@
 //  Replace the two values below with your project credentials.
 //  Dashboard → Settings → API → Project URL & anon/public key
 
-const SUPABASE_URL  = 'create your url in supabase dashboard and paste here';
-const SUPABASE_ANON = 'create your anon key in supabase dashboard and paste here';
+const SUPABASE_URL  = 'https://xqobdsessewpfvzoqngj.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhxb2Jkc2Vzc2V3cGZ2em9xbmdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MzYyNzEsImV4cCI6MjA4OTUxMjI3MX0.xj8eAg9d_nPePiJHOT5S5pZvocrYkWNxc-fa3LeVUSk';
 
 // Lazy-init: the client is created once on first use so the
 // script works even if the Supabase CDN hasn't loaded yet.
@@ -282,21 +282,69 @@ async function loadDashboardStats() {
   if (aEl) { aEl.textContent = '94.2%'; }
 
   updatePatientBadges(total, highRisk);
-  loadRecentPatients();
+
+  // ── Render 5 most-recent patients from Supabase into dashboard table ──
+  _allPatients = patients;
+  _renderDashboardPatients(patients);
+}
+
+// ── Render 5 most recent patients in dashboard table (no pagination) ──────────
+function _renderDashboardPatients(patients) {
+  const tbody = document.getElementById('patientsTable');
+  if (!tbody) return;
+
+  const recent = patients.slice(0, 5);
+
+  if (!recent.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--tx3);padding:2rem">
+      <div style="font-size:1.5rem;margin-bottom:.5rem">📭</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.8rem">No patients registered yet</div>
+      <div style="font-size:.75rem;margin-top:.3rem">Add a patient to get started</div>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = recent.map((raw, i) => {
+    const p = normPatient(raw, i);
+    return `<tr onclick="window.location.href='/patients'" style="cursor:pointer">
+      <td class="mono" style="color:var(--c1);font-size:.8rem">${p.id}</td>
+      <td><div class="pt-cell">${ptAvatar(p.name, i)}<span>${p.name}</span></div></td>
+      <td>${p.age}</td>
+      <td>${p.genderStr}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.last}">${p.last}</td>
+      <td>${riskBadge(p.risk)}</td>
+      <td><div class="table-actions">
+        <button class="btn btn-icon btn-ghost btn-sm" onclick="event.stopPropagation();editPatient('${p.id}')" title="Edit">✏️</button>
+        <button class="btn btn-icon btn-danger btn-sm" onclick="event.stopPropagation();deletePatient(this,'${p.id}')" title="Delete">🗑</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+
+  // Update "View all" link with live count
+  const viewAll = document.querySelector('a.card-action[href="/patients"]');
+  if (viewAll) viewAll.textContent = `View all ${patients.length} →`;
+
+  // Remove any stale pagination bar from dashboard
+  document.getElementById('_ptPagBar')?.remove();
 }
 
 function updatePatientBadges(total, highRisk) {
-  // Update all nav-badge elements for patients
+  // Sidebar patient count badge
   document.querySelectorAll('.nav-link').forEach(link => {
     if (link.textContent.includes('Patients')) {
       const badge = link.querySelector('.nav-badge');
       if (badge) badge.textContent = total;
     }
   });
-  // Update status chip in topbar if on patients page
+  // Topbar status chip — update on both dashboard and patients page
   const statusChip = document.querySelector('.status-chip');
-  if (statusChip && window.location.pathname.includes('patients')) {
-    statusChip.innerHTML = `<div class="status-dot"></div> ${total} Active`;
+  if (statusChip) {
+    const onDashboard = document.getElementById('patientsCount') && !window.location.pathname.includes('patients');
+    if (onDashboard) {
+      // Keep dashboard chip as "AI Online"
+    } else {
+      statusChip.innerHTML = `<div class="status-dot"></div> ${total} Active`;
+    }
   }
 }
 
@@ -387,16 +435,26 @@ async function loadRecentPatients(forcedData) {
   _currentPage = 1;
 
   renderPatientPage();
-  refreshPatientStats();
+  await refreshPatientStats();   // await so stats always reflect the freshly loaded data
   setTimeout(() => { initPatientSearch?.(); }, 80);
 }
 
 // ── Recount stats from live _allPatients and update the four cards ────────────
-function refreshPatientStats() {
-  const pts = _allPatients || [];
+// If _allPatients is empty (page just loaded), fetches from Supabase first.
+async function refreshPatientStats() {
+  // If data hasn't loaded yet, fetch it now directly from Supabase
+  let pts = _allPatients || [];
+  if (!pts.length) {
+    const fresh = await sbLoadPatients();
+    if (fresh && fresh.length) {
+      _allPatients = fresh;
+      pts = fresh;
+    }
+  }
+
   const total = pts.length;
   const high  = pts.filter(p => (p.risk || '').toLowerCase() === 'high').length;
-  const mid   = pts.filter(p => ['mid','medium'].includes((p.risk || '').toLowerCase())).length;
+  const mid   = pts.filter(p => ['mid', 'medium'].includes((p.risk || '').toLowerCase())).length;
   const low   = pts.filter(p => (p.risk || '').toLowerCase() === 'low').length;
 
   const tEl = document.getElementById('ptStatTotal');
@@ -408,11 +466,13 @@ function refreshPatientStats() {
   if (mEl) animateCounter(mEl, mid);
   if (lEl) animateCounter(lEl, low);
 
-  // Keep topbar "Active" chip in sync
+  // Topbar Active chip
   const chip = document.querySelector('.status-chip');
-  if (chip) chip.innerHTML = `<div class="status-dot"></div> ${total} Active`;
+  if (chip && window.location.pathname.includes('patients')) {
+    chip.innerHTML = `<div class="status-dot"></div> ${total} Active`;
+  }
 
-  // Keep patientsCount (dashboard) in sync
+  // Dashboard patientsCount badge
   const cntEl = document.getElementById('patientsCount');
   if (cntEl && cntEl.textContent !== String(total)) animateCounter(cntEl, total);
 }
@@ -441,8 +501,11 @@ function _getFilteredPatients() {
   });
 }
 
-// ── Render one page of the filtered list ─────────────────────────────────────
+// ── Render one page of the filtered list (patients page only) ────────────────
 function renderPatientPage() {
+  // Skip on dashboard — _renderDashboardPatients() handles that table
+  if (document.getElementById('patientsCount') && !window.location.pathname.includes('patients')) return;
+
   const tbody = document.getElementById('patientsTable');
   if (!tbody) return;
 
@@ -708,10 +771,21 @@ async function deletePatient(btn, id) {
     } catch { showToast('🗑 Patient removed (demo mode)', 'info'); }
   }
 
-  // Remove from cache, re-render, refresh stats
+  // Remove from cache, then refresh the correct table
   _allPatients = _allPatients.filter(p => p.id !== id);
-  renderPatientPage();
-  refreshPatientStats();
+  const onDashboard = document.getElementById('patientsCount') && !window.location.pathname.includes('patients');
+  if (onDashboard) {
+    _renderDashboardPatients(_allPatients);
+    updatePatientBadges(
+      _allPatients.length,
+      _allPatients.filter(p => (p.risk || '').toLowerCase() === 'high').length
+    );
+    const pEl = document.getElementById('patientsCount');
+    if (pEl) animateCounter(pEl, _allPatients.length);
+  } else {
+    renderPatientPage();
+    refreshPatientStats();
+  }
 }
 
 // ── Add Patient ──────────────────────────────
@@ -776,7 +850,13 @@ async function submitPatient() {
 
   _showRegistrationCard({ id: newId, name, age, gender, cond, success: registerSuccess });
 
-  await loadRecentPatients(null);  // also calls refreshPatientStats() internally
+  // Reload the correct table depending on which page we're on
+  const onDash = document.getElementById('patientsCount') && !window.location.pathname.includes('patients');
+  if (onDash) {
+    await loadDashboardStats();
+  } else {
+    await loadRecentPatients(null);
+  }
 }
 
 function _showRegistrationCard({ id, name, age, gender, cond, success }) {
@@ -2472,22 +2552,155 @@ let chatOpen = false;
 function toggleChat() {
   chatOpen = !chatOpen;
   const win = document.getElementById('chatWindow');
-  if (win) win.classList.toggle('hidden', !chatOpen);
+  const fab = document.getElementById('chatFab');
+  if (win) {
+    win.classList.toggle('hidden', !chatOpen);
+    if (chatOpen) {
+      win.style.animation = 'chatSlideUp .25s cubic-bezier(.34,1.56,.64,1)';
+      _positionChatWindow();
+    }
+  }
+  if (fab) fab.style.transform = chatOpen ? 'scale(1.08) rotate(20deg)' : 'scale(1) rotate(0deg)';
 }
 
 function closeChat() {
   chatOpen = false;
-  document.getElementById('chatWindow')?.classList.add('hidden');
+  const win = document.getElementById('chatWindow');
+  const fab = document.getElementById('chatFab');
+  if (win) win.classList.add('hidden');
+  if (fab) fab.style.transform = 'scale(1) rotate(0deg)';
+}
+
+function _positionChatWindow() {
+  const fab = document.getElementById('chatFab');
+  const win = document.getElementById('chatWindow');
+  if (!fab || !win || win.classList.contains('hidden')) return;
+  const fabRect = fab.getBoundingClientRect();
+  const winW = win.offsetWidth  || 340;
+  const winH = win.offsetHeight || 480;
+  const margin = 12;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let top  = fabRect.top - winH - margin;
+  let left = fabRect.right - winW;
+  if (top  < margin)           top  = fabRect.bottom + margin;
+  if (left < margin)           left = margin;
+  if (left + winW > vw - margin) left = vw - winW - margin;
+  if (top  + winH > vh - margin) top  = vh - winH - margin;
+  win.style.position = 'fixed';
+  win.style.top      = top  + 'px';
+  win.style.left     = left + 'px';
+  win.style.bottom   = 'auto';
+  win.style.right    = 'auto';
 }
 
 function initChat() {
-  const input = document.getElementById('chatInput');
-  const sendBtn = document.getElementById('chatSend');
+  const input    = document.getElementById('chatInput');
+  const sendBtn  = document.getElementById('chatSend');
+  const fab      = document.getElementById('chatFab');
+  const closeBtn = document.getElementById('chatClose');
+  const panel    = fab && fab.closest('.chatbot-panel') || document.querySelector('.chatbot-panel');
 
   if (input) {
-    input.addEventListener('keypress', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }});
+    input.addEventListener('keypress', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+    });
   }
-  sendBtn?.addEventListener('click', sendChatMessage);
+  sendBtn && sendBtn.addEventListener('click', sendChatMessage);
+  if (closeBtn) {
+    const nc = closeBtn.cloneNode(true);
+    closeBtn.parentNode.replaceChild(nc, closeBtn);
+    nc.addEventListener('click', closeChat);
+  }
+
+  if (!document.getElementById('_chatFabCSS')) {
+    const s = document.createElement('style');
+    s.id = '_chatFabCSS';
+    s.textContent = [
+      '.chatbot-panel { pointer-events:none; }',
+      '.chatbot-panel .chat-fab, .chatbot-panel .chat-window { pointer-events:all; }',
+      '.chat-fab { cursor:grab !important; user-select:none; touch-action:none;',
+      '  transition:transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s ease !important; }',
+      '.chat-fab:hover { transform:scale(1.12) translateY(-3px) !important;',
+      '  box-shadow:0 8px 24px rgba(0,212,255,.4) !important; }',
+      '.chat-fab:active { cursor:grabbing !important; }',
+      '.chat-fab.is-dragging { cursor:grabbing !important; transform:scale(1.15) !important;',
+      '  box-shadow:0 12px 32px rgba(0,212,255,.55) !important; transition:box-shadow .15s ease !important; }',
+      '@keyframes chatSlideUp {',
+      '  from { opacity:0; transform:translateY(16px) scale(.96); }',
+      '  to   { opacity:1; transform:translateY(0)    scale(1);   } }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  if (!fab || !panel) return;
+
+  panel.style.cssText += ';position:fixed;bottom:1.5rem;right:1.5rem;left:auto;top:auto;z-index:9999;';
+
+  let isDragging = false, dragMoved = false;
+  let startX, startY, origLeft, origTop;
+  const THRESHOLD = 6;
+
+  function getPointer(e) { return e.touches ? e.touches[0] : e; }
+
+  function onDown(e) {
+    if (e.button !== undefined && e.button !== 0) return;
+    const pt = getPointer(e);
+    startX = pt.clientX;
+    startY = pt.clientY;
+    isDragging = true;
+    dragMoved  = false;
+    const rect = panel.getBoundingClientRect();
+    origLeft = rect.left;
+    origTop  = rect.top;
+    panel.style.left   = origLeft + 'px';
+    panel.style.top    = origTop  + 'px';
+    panel.style.right  = 'auto';
+    panel.style.bottom = 'auto';
+    document.addEventListener('mousemove', onMove, { passive: false });
+    document.addEventListener('mouseup',   onUp);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend',  onUp);
+  }
+
+  function onMove(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+    const pt = getPointer(e);
+    const dx = pt.clientX - startX;
+    const dy = pt.clientY - startY;
+    if (!dragMoved && Math.sqrt(dx*dx + dy*dy) < THRESHOLD) return;
+    dragMoved = true;
+    fab.classList.add('is-dragging');
+    const pw = panel.offsetWidth  || 80;
+    const ph = panel.offsetHeight || 80;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    panel.style.left = Math.max(0, Math.min(vw - pw, origLeft + dx)) + 'px';
+    panel.style.top  = Math.max(0, Math.min(vh - ph, origTop  + dy)) + 'px';
+    if (chatOpen) _positionChatWindow();
+  }
+
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup',   onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend',  onUp);
+    fab.classList.remove('is-dragging');
+    fab.style.transform = chatOpen ? 'scale(1.08) rotate(20deg)' : 'scale(1) rotate(0deg)';
+    isDragging = false;
+    if (!dragMoved) toggleChat();
+    dragMoved = false;
+    if (chatOpen) setTimeout(_positionChatWindow, 10);
+  }
+
+  const newFab = fab.cloneNode(true);
+  fab.parentNode.replaceChild(newFab, fab);
+  newFab.addEventListener('mousedown',  onDown);
+  newFab.addEventListener('touchstart', onDown, { passive: false });
+  newFab.setAttribute('title', 'Drag to move  \u00b7  Click to open');
+
+  window.addEventListener('resize', function() { if (chatOpen) _positionChatWindow(); });
 }
 
 async function sendChatMessage() {
@@ -3677,9 +3890,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Page-specific
-  if (document.getElementById('patientsCount')) loadDashboardStats();
-  if (document.getElementById('patientsTable') && !document.getElementById('patientsCount')) {
-    loadRecentPatients(DEMO_PATIENTS);
+  if (document.getElementById('patientsCount')) {
+    // Dashboard — load from Supabase and render recent 5 patients
+    loadDashboardStats();
+  } else if (document.getElementById('patientsTable')) {
+    // Patients page — load full paginated list from Supabase
+    loadRecentPatients(null);
     setTimeout(initPatientSearch, 400);
   }
 
@@ -3699,8 +3915,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('downloadReport')?.addEventListener('click', downloadReport);
   document.getElementById('confirmBtn')?.addEventListener('click', () => submitFeedback('confirm'));
   document.getElementById('incorrectBtn')?.addEventListener('click', () => submitFeedback('incorrect'));
-  document.getElementById('chatFab')?.addEventListener('click', toggleChat);
-  document.getElementById('chatClose')?.addEventListener('click', closeChat);
+  // chatFab and chatClose are wired inside initChat() with drag support
   document.getElementById('addPatientBtn')?.addEventListener('click', submitPatient);
   document.getElementById('openAddModal')?.addEventListener('click', openAddPatient);
   document.getElementById('modalCloseBtn')?.addEventListener('click', () => closeModal('patientModal'));
