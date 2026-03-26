@@ -529,16 +529,18 @@ function renderPatientPage() {
     tbody.innerHTML = pageRows.map((raw, i) => {
       const gi = start + i;
       const p  = normPatient(raw, gi);
-      const extraCol = isDashboard ? '' :
-        `<td style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--tx3)">${p.date || '—'}</td>`;
+      // Format date as YYYY-MM-DD, stripping any time component
+      const dateStr = p.date ? String(p.date).slice(0, 10) : '—';
+      const scanCol = isDashboard ? '' :
+        `<td style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--tx3)">${dateStr}</td>`;
       return `<tr onclick="viewPatient('${p.id}')">
         <td class="mono" style="color:var(--c1);font-size:.8rem">${p.id}</td>
         <td><div class="pt-cell">${ptAvatar(p.name, gi)}<span>${p.name}</span></div></td>
         <td>${p.age}</td>
         <td>${p.genderStr}</td>
         <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.last}">${p.last}</td>
-        ${extraCol}
         <td>${riskBadge(p.risk)}</td>
+        ${scanCol}
         <td><div class="table-actions">
           <button class="btn btn-icon btn-ghost btn-sm" onclick="event.stopPropagation();editPatient('${p.id}')" title="Edit">✏️</button>
           <button class="btn btn-icon btn-danger btn-sm" onclick="event.stopPropagation();deletePatient(this,'${p.id}')" title="Delete">🗑</button>
