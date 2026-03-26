@@ -2,8 +2,8 @@
 //  Replace the two values below with your project credentials.
 //  Dashboard → Settings → API → Project URL & anon/public key
 
-const SUPABASE_URL  = 'give your url';
-const SUPABASE_ANON = 'give your anon key';
+const SUPABASE_URL  = 'https://xqobdsessewpfvzoqngj.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhxb2Jkc2Vzc2V3cGZ2em9xbmdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MzYyNzEsImV4cCI6MjA4OTUxMjI3MX0.xj8eAg9d_nPePiJHOT5S5pZvocrYkWNxc-fa3LeVUSk';
 
 // Lazy-init: the client is created once on first use so the
 // script works even if the Supabase CDN hasn't loaded yet.
@@ -798,6 +798,50 @@ function closeModal(id) {
   if (modal) modal.classList.remove('open');
 }
 
+// ── Infer risk level + score from free-text condition ───────────────────────
+// Handles inputs like "Stage 4 Cancer", "stage II adenocarcinoma",
+// "High-Grade Dysplasia", "Chronic Gastritis", "Normal Mucosa", etc.
+function inferRiskFromCondition(cond) {
+  if (!cond) return { risk: 'low', risk_score: 15, tier: 'NORMAL' };
+
+  const t = cond.toLowerCase();
+
+  // ── Cancer stage detection (Stage I–IV, 1–4) ──────────────────────────────
+  const stageMatch = t.match(/stage\s*(iv|iii|ii|i|4|3|2|1)\b/i);
+  if (stageMatch) {
+    const s = stageMatch[1].toLowerCase();
+    if (s === 'iv' || s === '4') return { risk: 'high',  risk_score: 95, tier: 'CRITICAL'   };
+    if (s === 'iii'|| s === '3') return { risk: 'high',  risk_score: 85, tier: 'CRITICAL'   };
+    if (s === 'ii' || s === '2') return { risk: 'mid',   risk_score: 65, tier: 'SUSPICIOUS' };
+    if (s === 'i'  || s === '1') return { risk: 'mid',   risk_score: 50, tier: 'SUSPICIOUS' };
+  }
+
+  // ── Keyword-based rules ───────────────────────────────────────────────────
+  const HIGH_RISK = [
+    'adenocarcinoma', 'carcinoma', 'cancer', 'malignant', 'malignancy',
+    'metastasis', 'metastatic', 'high-grade dysplasia', 'high grade dysplasia',
+    'signet ring', 'lymphoma', 'sarcoma', 'tumor', 'tumour',
+  ];
+  const MID_RISK = [
+    'dysplasia', 'low-grade dysplasia', 'low grade dysplasia',
+    'intestinal metaplasia', 'metaplasia', 'barrett', 'atrophic gastritis',
+    'ulcer', 'peptic ulcer', 'polyp', 'adenoma', 'h. pylori', 'h pylori',
+    'helicobacter', 'suspicious', 'precancerous', 'pre-cancerous',
+  ];
+  const LOW_RISK = [
+    'chronic gastritis', 'gastritis', 'normal mucosa', 'normal',
+    'reflux', 'gerd', 'mild inflammation', 'superficial gastritis',
+    'benign', 'follow-up', 'routine',
+  ];
+
+  for (const kw of HIGH_RISK) if (t.includes(kw)) return { risk: 'high', risk_score: 88, tier: 'CRITICAL'   };
+  for (const kw of MID_RISK)  if (t.includes(kw)) return { risk: 'mid',  risk_score: 55, tier: 'SUSPICIOUS' };
+  for (const kw of LOW_RISK)  if (t.includes(kw)) return { risk: 'low',  risk_score: 18, tier: 'NORMAL'     };
+
+  // Default: unknown condition → watch / low
+  return { risk: 'low', risk_score: 20, tier: 'NORMAL' };
+}
+
 async function submitPatient() {
   const name   = document.getElementById('nameInput')?.value?.trim();
   const age    = document.getElementById('ageInput')?.value;
@@ -811,15 +855,18 @@ async function submitPatient() {
 
   const newId = await sbNextPatientId();
 
+  // ── Derive risk from condition text ────────────────────────────────────────
+  const { risk, risk_score, tier } = inferRiskFromCondition(cond);
+
   const patientRow = {
     id:             newId,
     name,
     age:            parseInt(age),
     gender,
     last_diagnosis: cond || null,
-    risk:           'low',
-    risk_score:     null,
-    tier:           null,
+    risk,
+    risk_score,
+    tier,
     last_scan:      new Date().toISOString().slice(0, 10),
   };
 
@@ -831,7 +878,7 @@ async function submitPatient() {
       const res = await fetch('/add_patient', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ name, age: parseInt(age), gender, condition: cond, risk: 'low' }),
+        body:    JSON.stringify({ name, age: parseInt(age), gender, condition: cond, risk, risk_score }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       registerSuccess = true;
