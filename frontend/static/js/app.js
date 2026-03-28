@@ -1,9 +1,9 @@
- //  SUPABASE CLIENT
+//  SUPABASE CLIENT
 //  Replace the two values below with your project credentials.
 //  Dashboard → Settings → API → Project URL & anon/public key
 
-const SUPABASE_URL  = 'give your url';
-const SUPABASE_ANON = 'give your anon key';
+const SUPABASE_URL  = 'https://xqobdsessewpfvzoqngj.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhxb2Jkc2Vzc2V3cGZ2em9xbmdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MzYyNzEsImV4cCI6MjA4OTUxMjI3MX0.xj8eAg9d_nPePiJHOT5S5pZvocrYkWNxc-fa3LeVUSk';
 
 // Lazy-init: the client is created once on first use so the
 // script works even if the Supabase CDN hasn't loaded yet.
@@ -22,10 +22,13 @@ function getSupabase() {
 async function sbLoadPatients() {
   const sb = getSupabase();
   if (!sb) return null;
+  // .range(0, 999) overrides the Supabase "Max Rows" API setting so all
+  // patients are always returned regardless of the dashboard cap.
   const { data, error } = await sb
     .from('patients')
     .select('*')
-    .order('updated_at', { ascending: false });
+    .order('updated_at', { ascending: false })
+    .range(0, 999);
   if (error) { console.error('sbLoadPatients:', error.message); return null; }
   return data;
 }
@@ -70,18 +73,21 @@ async function sbDeletePatient(id) {
 }
 
 // ── Supabase: generate next patient id ────────
-//  Reads highest existing P-XXXX and increments by 1.
+//  Fetches ALL ids and finds the true numeric maximum so it never
+//  breaks on text-sort edge cases (e.g. 'P-0100' < 'P-0041' alphabetically).
 async function sbNextPatientId() {
   const sb = getSupabase();
   if (!sb) return 'P-' + String(Date.now()).slice(-4);
   const { data } = await sb
     .from('patients')
     .select('id')
-    .order('id', { ascending: false })
-    .limit(1);
+    .range(0, 999);
   if (!data || !data.length) return 'P-0001';
-  const last = parseInt((data[0].id || '').replace('P-', '')) || 0;
-  return 'P-' + String(last + 1).padStart(4, '0');
+  const maxNum = data.reduce((max, row) => {
+    const n = parseInt((row.id || '').replace('P-', '')) || 0;
+    return n > max ? n : max;
+  }, 0);
+  return 'P-' + String(maxNum + 1).padStart(4, '0');
 }
 
 // ── Supabase: save a scan result ─────────────
@@ -2861,7 +2867,9 @@ function appendChatMsg(text, role, body) {
 // ── Export CSV ───────────────────────────────
 window.exportCSV = function() {
   const rows = [['Patient ID','Name','Age','Gender','Last Diagnosis','Risk Level','Last Scan']];
-  DEMO_PATIENTS.forEach(p => {
+  // Use live Supabase cache; fall back to demo data only if nothing loaded yet
+  const source = (_allPatients && _allPatients.length) ? _allPatients : DEMO_PATIENTS;
+  source.forEach(p => {
     rows.push([
       p.id || '',
       p.name || '',
