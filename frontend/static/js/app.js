@@ -852,7 +852,9 @@ function closeModal(id) {
 // Handles inputs like "Stage 4 Cancer", "stage II adenocarcinoma",
 // "High-Grade Dysplasia", "Chronic Gastritis", "Normal Mucosa", etc.
 function inferRiskFromCondition(cond) {
-  if (!cond) return { risk: 'low', risk_score: 15, tier: 'NORMAL' };
+  // 'NORMAL' is NOT a valid tier in the DB CHECK constraint.
+  // Valid values: 'CRITICAL','SUSPICIOUS','NEGATIVE','WATCH','DEMO','UNKNOWN'
+  if (!cond) return { risk: 'low', risk_score: 15, tier: 'NEGATIVE' };
 
   const t = cond.toLowerCase();
 
@@ -886,10 +888,10 @@ function inferRiskFromCondition(cond) {
 
   for (const kw of HIGH_RISK) if (t.includes(kw)) return { risk: 'high', risk_score: 88, tier: 'CRITICAL'   };
   for (const kw of MID_RISK)  if (t.includes(kw)) return { risk: 'mid',  risk_score: 55, tier: 'SUSPICIOUS' };
-  for (const kw of LOW_RISK)  if (t.includes(kw)) return { risk: 'low',  risk_score: 18, tier: 'NORMAL'     };
+  for (const kw of LOW_RISK)  if (t.includes(kw)) return { risk: 'low',  risk_score: 18, tier: 'NEGATIVE'   };
 
   // Default: unknown condition → watch / low
-  return { risk: 'low', risk_score: 20, tier: 'NORMAL' };
+  return { risk: 'low', risk_score: 20, tier: 'WATCH' };
 }
 
 async function submitPatient() {
@@ -947,7 +949,16 @@ async function submitPatient() {
 
   _showRegistrationCard({ id: newId, name, age, gender, cond, success: registerSuccess });
 
-  // Reload the correct table depending on which page we're on
+  // ── Optimistically prepend so the new patient appears instantly ──────────
+  // Use the saved row from Supabase if available (has server timestamps),
+  // otherwise fall back to the local patientRow we built above.
+  const freshRow = saved || patientRow;
+  // Remove any stale entry with same id (shouldn't exist, but be safe)
+  _allPatients = _allPatients.filter(p => p.id !== freshRow.id);
+  // Prepend so it appears at the top (matches ORDER BY updated_at DESC)
+  _allPatients = [freshRow, ..._allPatients];
+
+  // Now do a full reload to sync with Supabase and update all stats/bars
   const onDash = document.getElementById('patientsCount') && !window.location.pathname.includes('patients');
   if (onDash) {
     await loadDashboardStats();
